@@ -438,6 +438,9 @@ let vaccReminderOverrides = {}; // { 'Covid-19': {years:1, disabled:false}, ... 
 let vaccOverridesFileId = null;
 let vaccinationerFileId = null;   // Drive-fil-id för vaccinationer.json, så nya vaccinationer kan sparas dit
 let vaccinationerMeta = {};       // övriga fält i vaccinationer.json (beskrivning m.m.) utöver själva listan
+let journalRegisterFileId = null; // Drive-fil-id för journal_register.json, så bilagor kan sparas dit
+let attachmentsFolderId = null;   // Drive-mappen "Attachments" (i Hälsoöversikt-roten), om den finns
+let attachmentFiles = [];         // filer i Attachments-mappen, valbara att koppla till en tidslinjepost
 
 /* ---------- Hjälpfunktioner ---------- */
 function banner(html, isErr){
@@ -618,6 +621,15 @@ async function loadAllData(){
   vaccinationerFileId = byName['vaccinationer.json'] ? byName['vaccinationer.json'].id : null;
   vaccinationerMeta = Object.assign({}, vaccReg);
   delete vaccinationerMeta.vaccinationer;
+  journalRegisterFileId = byName['journal_register.json'] ? byName['journal_register.json'].id : null;
+
+  // Attachments-mappen: filer man kan koppla till en tidslinjepost i efterhand (t.ex. ett
+  // kvitto för en vaccination), se attachFileToEntry(). Mappen är valfri — appen fungerar
+  // som vanligt utan den, kopplingsknappen visas bara om det finns filer att välja bland.
+  attachmentsFolderId = byName['Attachments'] ? byName['Attachments'].id : null;
+  attachmentFiles = attachmentsFolderId
+    ? (await listChildren(attachmentsFolderId)).filter(f=> f.mimeType !== 'application/vnd.google-apps.folder')
+    : [];
 
   // Personliga överstyrningar av vaccinationspåminnelser (intervall/avstängd per typ),
   // sparade separat i Drive så de överlever ett omladdat sidan.
@@ -630,11 +642,12 @@ async function loadAllData(){
     vaccReminderOverrides = {};
   }
 
-  const baseJournal = (journalReg.poster || []).map(p=>({
+  const baseJournal = (journalReg.poster || []).map((p,idx)=>({
     id: 'reg-' + p.datum + '-' + p.titel,
     datum: p.datum, titel: p.titel, kategori: p.kategori, kroppsdel: p.kroppsdel,
     sida: p.sida || '',
-    kalla: p.kalla, kommentar: '', kalla_typ: 'register'
+    kalla: p.kalla, kommentar: '', kalla_typ: 'register',
+    bilagor: p.bilagor || [], _sourceIdx: idx
   }));
 
   // Egna anteckningar-mappen
@@ -644,18 +657,24 @@ async function loadAllData(){
     const files = await listChildren(egnaFolderId);
     const jsonFiles = files.filter(f=> f.mimeType === 'application/json' || f.name.endsWith('.json'));
     const contents = await Promise.all(jsonFiles.map(f=> getJsonFile(f.id).catch(()=>null)));
-    egna = contents.filter(Boolean).map((c,i)=>({
-      id: 'egen-' + jsonFiles[i].id,
-      datum: c.datum, titel: c.titel, kategori: c.kategori || 'Egen anteckning',
-      kroppsdel: c.kroppsdel || 'allmant', sida: c.sida || '',
-      kalla: c.kalla || '', kommentar: c.kommentar || '',
-      kalla_typ: 'egen'
-    }));
+    // OBS: parar ihop varje innehåll med sin ursprungsfil INNAN ev. misslyckade hämtningar
+    // filtreras bort — annars glider index isär och _fileId (som bilagor sparas mot) skulle
+    // kunna peka på fel fil om någon enstaka hämtning misslyckats.
+    egna = jsonFiles.map((f,i)=> ({file:f, c: contents[i]}))
+      .filter(x=> x.c)
+      .map(({file,c})=>({
+        id: 'egen-' + file.id,
+        datum: c.datum, titel: c.titel, kategori: c.kategori || 'Egen anteckning',
+        kroppsdel: c.kroppsdel || 'allmant', sida: c.sida || '',
+        kalla: c.kalla || '', kommentar: c.kommentar || '',
+        kalla_typ: 'egen',
+        bilagor: c.bilagor || [], _fileId: file.id
+      }));
   }
 
   // Vaccinationer visas ALDRIG på kroppskartan (kroppsdel 'vaccin' finns avsiktligt
   // inte i MAP_PARTS), men syns nu även på Tidslinjen, inte bara under sin egen flik.
-  const vaccinTimeline = vaccinationer.map(v=>{
+  const vaccinTimeline = vaccinationer.map((v,idx)=>{
     const filer = v.filer || {};
     const kalla = filer.lang || filer.kort || filer.dokument || Object.values(filer)[0] || '';
     return {
@@ -667,7 +686,8 @@ async function loadAllData(){
       sida: '',
       kalla,
       kommentar: v.kommentar || '',
-      kalla_typ: 'vaccination'
+      kalla_typ: 'vaccination',
+      bilagor: v.bilagor || [], _sourceIdx: idx
     };
   });
 
@@ -692,6 +712,68 @@ async function loadAllData(){
       }catch(e){ console.warn('Kunde inte läsa', s.name, e); }
     }
   }
+}
+
+/* ---------- Bilagor (Attachments-mappen) ---------- */
+// Kopplar en fil från Drive-mappen "Attachments" till en befintlig tidslinjepost, oavsett
+// vilken av de tre datakällorna posten kommer ifrån (vaccination / journal_register.json /
+// egen anteckning). Varje post bär med sig en referens tillbaka till sin källa (satt i
+// loadAllData(): _sourceIdx för vaccination och register, _fileId för egna anteckningar)
+// så att rätt post kan hittas och skrivas tillbaka, utan att gissa via namn/datum.
+async function attachFileToEntry(entry, file){
+  const bilaga = {namn: file.name, url: `https://drive.google.com/file/d/${file.id}/view`};
+  if(entry.kalla_typ === 'vaccination'){
+    const v = vaccinationer[entry._sourceIdx];
+    if(!v) throw new Error('Hittade inte vaccinationsposten att koppla till.');
+    v.bilagor = (v.bilagor || []).concat([bilaga]);
+    await saveVaccinationer();
+  } else if(entry.kalla_typ === 'register'){
+    if(!journalRegisterFileId) throw new Error('Hittar inte journal_register.json i Drive.');
+    // läser om filen direkt innan skrivning (istället för att lita på en lokal kopia) så att
+    // inga andra fält i posten eller filen tappas vid omskrivning.
+    const fresh = await getJsonFile(journalRegisterFileId);
+    const post = (fresh.poster || [])[entry._sourceIdx];
+    if(!post) throw new Error('Hittade inte journalposten att koppla till.');
+    post.bilagor = (post.bilagor || []).concat([bilaga]);
+    await updateDriveFileContent(journalRegisterFileId, 'application/json', JSON.stringify(fresh, null, 2));
+  } else if(entry.kalla_typ === 'egen'){
+    if(!entry._fileId) throw new Error('Hittar inte filen för den här anteckningen.');
+    const fresh = await getJsonFile(entry._fileId);
+    fresh.bilagor = (fresh.bilagor || []).concat([bilaga]);
+    await updateDriveFileContent(entry._fileId, 'application/json', JSON.stringify(fresh, null, 2));
+  } else {
+    throw new Error('Okänd posttyp — kan inte koppla en bilaga hit.');
+  }
+  await loadAllData();
+  renderAll();
+}
+
+// Kopplar bort en tidigare kopplad bilaga från en post igen (t.ex. om man kopplade fel).
+// Matchar på bilagans url eftersom det är den enda stabila identifieraren vi sparar per bilaga.
+// Samma tre-vägs dispatch och "läs om innan skrivning"-mönster som attachFileToEntry().
+async function detachFileFromEntry(entry, bilagaUrl){
+  if(entry.kalla_typ === 'vaccination'){
+    const v = vaccinationer[entry._sourceIdx];
+    if(!v) throw new Error('Hittade inte vaccinationsposten.');
+    v.bilagor = (v.bilagor || []).filter(b=> b.url !== bilagaUrl);
+    await saveVaccinationer();
+  } else if(entry.kalla_typ === 'register'){
+    if(!journalRegisterFileId) throw new Error('Hittar inte journal_register.json i Drive.');
+    const fresh = await getJsonFile(journalRegisterFileId);
+    const post = (fresh.poster || [])[entry._sourceIdx];
+    if(!post) throw new Error('Hittade inte journalposten.');
+    post.bilagor = (post.bilagor || []).filter(b=> b.url !== bilagaUrl);
+    await updateDriveFileContent(journalRegisterFileId, 'application/json', JSON.stringify(fresh, null, 2));
+  } else if(entry.kalla_typ === 'egen'){
+    if(!entry._fileId) throw new Error('Hittar inte filen för den här anteckningen.');
+    const fresh = await getJsonFile(entry._fileId);
+    fresh.bilagor = (fresh.bilagor || []).filter(b=> b.url !== bilagaUrl);
+    await updateDriveFileContent(entry._fileId, 'application/json', JSON.stringify(fresh, null, 2));
+  } else {
+    throw new Error('Okänd posttyp — kan inte koppla bort en bilaga här.');
+  }
+  await loadAllData();
+  renderAll();
 }
 
 /* ---------- Kroppskarta ---------- */
@@ -722,10 +804,31 @@ function renderDetail(){
   related.forEach(e=> list.appendChild(entryCard(e)));
 }
 
+// Bilaga-alternativ för kopplingsväljaren: markerar filer som redan är kopplade någonstans
+// (till valfri post) som en hjälp för att undvika att koppla samma fil av misstag två gånger.
+function attachmentOptionLabel(file){
+  const url = `https://drive.google.com/file/d/${file.id}/view`;
+  const used = journalEntries.some(e=> (e.bilagor||[]).some(b=> b.url === url));
+  return file.name + (used ? ' (redan kopplad)' : '');
+}
 function entryCard(e){
   const div = document.createElement('div');
   div.className = 'entry';
   const badgeCls = 'badge-' + (e.kroppsdel || 'allmant');
+  const bilagor = e.bilagor || [];
+  const bilagorHtml = bilagor.length
+    ? bilagor.map(b=> `<div class="bilaga-row" style="margin-top:4px;display:flex;gap:8px;align-items:center;">
+         <a href="${b.url}" target="_blank" rel="noopener">📎 ${b.namn}</a>
+         <button type="button" class="btn secondary detach-btn" data-url="${b.url.replace(/"/g,'&quot;')}" style="padding:2px 8px;font-size:11px;">Koppla ifrån</button>
+       </div>`).join('')
+    : '';
+  const attachHtml = attachmentFiles.length
+    ? `<div class="attach-row" style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+         <select class="attach-select">${attachmentFiles.map(f=> `<option value="${f.id}">${attachmentOptionLabel(f)}</option>`).join('')}</select>
+         <button type="button" class="btn secondary attach-btn" style="padding:4px 10px;font-size:12px;">Koppla bilaga</button>
+         <span class="attach-msg hint"></span>
+       </div>`
+    : `<p class="hint" style="margin-top:10px;">Lägg filer i Drive-mappen "Attachments" (i Hälsoöversikt-mappen) för att kunna koppla dem hit.</p>`;
   div.innerHTML = `
     <div class="entry-top">
       <div class="entry-meta">
@@ -738,11 +841,48 @@ function entryCard(e){
     <div class="entry-body">
       ${e.kommentar ? `<div class="full">${e.kommentar.replace(/</g,'&lt;')}</div>` : ''}
       ${e.kalla ? `<div style="margin-top:8px;"><a href="${e.kalla}" target="_blank" rel="noopener">Öppna original ↗</a></div>` : ''}
+      ${bilagorHtml}
+      <span class="detach-msg hint"></span>
+      ${attachHtml}
     </div>
   `;
   div.querySelector('.entry-top').addEventListener('click', ()=>{
     div.querySelector('.entry-body').classList.toggle('open');
   });
+  div.querySelectorAll('.detach-btn').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      ev.stopPropagation();
+      const msg = div.querySelector('.detach-msg');
+      btn.disabled = true;
+      msg.textContent = 'Kopplar bort…';
+      try{
+        await detachFileFromEntry(e, btn.dataset.url); // laddar om all data och ritar om vid lyckad borttagning
+      }catch(err){
+        console.error(err);
+        msg.textContent = 'Kunde inte koppla bort: ' + err.message;
+        btn.disabled = false;
+      }
+    });
+  });
+  const attachBtn = div.querySelector('.attach-btn');
+  if(attachBtn){
+    attachBtn.addEventListener('click', async (ev)=>{
+      ev.stopPropagation();
+      const sel = div.querySelector('.attach-select');
+      const file = attachmentFiles.find(f=> f.id === sel.value);
+      if(!file) return;
+      const msg = div.querySelector('.attach-msg');
+      attachBtn.disabled = true;
+      msg.textContent = 'Kopplar…';
+      try{
+        await attachFileToEntry(e, file); // laddar om all data och ritar om vid lyckad koppling
+      }catch(err){
+        console.error(err);
+        msg.textContent = 'Kunde inte koppla: ' + err.message;
+        attachBtn.disabled = false;
+      }
+    });
+  }
   return div;
 }
 
@@ -1064,7 +1204,12 @@ function renderVaccinationer(){
     </div>` : '';
   const sorted = vaccinationer.slice().sort((a,b)=> new Date(b.datum)-new Date(a.datum));
   let rows = sorted.map(v=>{
-    const links = Object.entries(v.filer||{}).map(([k,url])=> `<a href="${url}" target="_blank" rel="noopener">${k}</a>`).join(' ');
+    // "Källa"-kolumnen visar både de ursprungliga dokumenten (filer) och ev. bilagor som
+    // kopplats till vaccinationen i efterhand (t.ex. ett kvitto) via Tidslinjens "Koppla
+    // bilaga" — samma vaccinationspost, bara två olika ställen datan kommer ifrån.
+    const origLinks = Object.entries(v.filer||{}).map(([k,url])=> `<a href="${url}" target="_blank" rel="noopener">${k}</a>`);
+    const bilagaLinks = (v.bilagor||[]).map(b=> `<a href="${b.url}" target="_blank" rel="noopener">📎 ${b.namn}</a>`);
+    const links = origLinks.concat(bilagaLinks).join(' ');
     const infos = dueMap.get(v);
     let dueCell = '<span class="vacc-note">—</span>';
     if(infos && infos.length){
