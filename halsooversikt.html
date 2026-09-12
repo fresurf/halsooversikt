@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hälsoöversikt</title>
+<style>
+  :root{
+    --bg:#F7F5EF;
+    --surface:#FFFFFF;
+    --ink:#2A2822;
+    --muted:#726F65;
+    --faint:#9C988B;
+    --line:#E1DCCE;
+    --teal:#2F5D55;
+    --teal-light:#E4EFEC;
+    --red:#B7402F;
+    --red-light:#F8E4E0;
+    --gold:#8A6A21;
+    --gold-light:#F3EAD9;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.5;
+  }
+  h1,h2,h3{font-family:Georgia,"Iowan Old Style",serif;font-weight:normal;margin:0;}
+  .wrap{max-width:1020px;margin:0 auto;padding:28px 20px 60px;}
+  header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:14px;}
+  header h1{font-size:26px;color:var(--teal);}
+  header p{margin:4px 0 0;color:var(--muted);font-size:14px;}
+  .auth-box{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;}
+  .auth-box .status-dot{width:9px;height:9px;border-radius:50%;background:var(--faint);display:inline-block;}
+  .auth-box .status-dot.ok{background:#3C7A4E;}
+  .auth-box .status-dot.err{background:var(--red);}
+  .btn{background:var(--teal);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;}
+  .btn:hover{background:#264b44;}
+  .btn.secondary{background:var(--muted);}
+  .btn.secondary:hover{background:#5c594f;}
+  .btn.ghost{background:none;color:var(--teal);border:1px solid var(--teal);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .icon-btn{background:none;border:1px solid var(--line);border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--muted);font-size:15px;}
+
+  nav{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:24px;flex-wrap:wrap;}
+  nav button{
+    background:none;border:none;padding:10px 16px;font-size:14px;color:var(--muted);
+    cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  nav button.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:600;}
+  .tab-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:6px;margin-bottom:1px;vertical-align:middle;background:var(--gold);opacity:0;transition:opacity .15s;}
+  .tab-dot.show{opacity:1;}
+  .tab-dot.overdue{background:var(--red);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .banner{background:var(--gold-light);border:1px solid #E3D3A6;color:#6B5215;border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:20px;}
+  .banner.err{background:var(--red-light);border-color:#E6B7AC;color:#7A2E20;}
+  .banner code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;}
+  .settings{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:20px;max-width:640px;}
+  .settings h3{font-size:15px;margin-bottom:10px;}
+  .settings label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .settings input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);}
+  .settings .row{display:flex;gap:10px;align-items:flex-end;margin-top:12px;}
+  .settings details{margin-top:12px;font-size:13px;color:var(--muted);}
+  .settings details summary{cursor:pointer;color:var(--teal);}
+  .settings ol{padding-left:18px;}
+  .settings li{margin-bottom:6px;}
+  .loading{color:var(--muted);font-size:13px;padding:20px 0;}
+
+  /* Kroppskarta */
+  .body-layout{display:flex;gap:32px;flex-wrap:wrap;}
+  .body-map{flex:0 0 220px;}
+  .body-map svg{width:100%;height:auto;}
+  .region{fill:#EFEBDF;stroke:var(--line);stroke-width:1.5;cursor:pointer;transition:fill .15s;}
+  .region:hover{fill:#DCE7E3;}
+  .region.selected{fill:var(--teal-light);stroke:var(--teal);}
+  .region.has-data{fill:var(--red-light);stroke:var(--red);}
+  .region.has-data:hover{fill:#F3CFC7;}
+  .region.has-data.selected{fill:#F3CFC7;stroke:var(--red);}
+  .region.mouth{stroke-width:2;}
+  .body-detail{flex:1;min-width:280px;}
+  .body-detail h2{font-size:18px;margin-bottom:4px;}
+  .body-detail .hint{color:var(--muted);font-size:13px;margin-bottom:16px;}
+  .legend{display:flex;gap:16px;margin-top:14px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block;}
+
+  /* Entry cards */
+  .entry{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+  .entry-top{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;}
+  .entry-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .date{font-size:13px;color:var(--muted);min-width:80px;}
+  .badge{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .badge-mun{background:#E4EEF5;color:#2E5A78;}
+  .badge-fot{background:#F3EAD9;color:#7A5E27;}
+  .badge-hoft{background:#EAE5F4;color:#4C3D80;}
+  .badge-allmant{background:#E5F0E6;color:#356B3E;}
+  .badge-administrativt{background:#E7EAEC;color:#4B5760;}
+  .badge-hjarta{background:#F9E2E2;color:#8C2F2F;}
+  .badge-arm{background:#E3EFE9;color:#2C6B4F;}
+  .badge-hand{background:#EAF0DE;color:#4C6B24;}
+  .badge-ben{background:#EFE6DC;color:#7A4B27;}
+  .badge-kna{background:#E5EEF0;color:#2E6270;}
+  .badge-vaccination_relaterat{background:var(--red-light);color:var(--red);}
+  .badge-vaccin{background:#DFF3F3;color:#1F6B6B;}
+  .badge-matvarden{background:#FBEBD6;color:#8A5A1E;}
+  .badge-egen{background:#DCEFE6;color:#1E6B47;}
+  .entry-title{font-size:14px;font-weight:600;flex:1;}
+  .chev{color:var(--faint);font-size:12px;}
+  .entry-body{display:none;padding-top:12px;margin-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--ink);}
+  .entry-body.open{display:block;}
+  .entry-body .full{white-space:pre-wrap;color:var(--muted);margin-top:8px;}
+  .entry-body a{color:var(--teal);}
+
+  /* Timeline filters */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+  .chip{border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;color:var(--muted);}
+  .chip.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+  .empty{color:var(--muted);font-size:14px;padding:24px 0;text-align:center;}
+
+  /* Vaccinationer */
+  .vacc-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .vacc-table th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);}
+  .vacc-table td{padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .vacc-table tr:last-child td{border-bottom:none;}
+  .vacc-links a{color:var(--teal);margin-right:10px;font-size:12px;white-space:nowrap;}
+  .vacc-note{color:var(--faint);font-size:12px;}
+  .vacc-disease{display:block;color:var(--muted);font-size:12px;margin-top:2px;}
+  .due-overdue{color:var(--red);font-weight:600;}
+  .due-soon{color:var(--gold);font-weight:600;}
+  .due-ok{color:var(--faint);}
+  .vacc-ov-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:13px;}
+  .vacc-ov-row label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+  .vacc-ov-row input[type=number]{width:64px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);}
+
+  /* Matvarden */
+  .mv-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+  .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;}
+  .chart-card canvas{max-width:100%;}
+  .mv-stats{display:flex;gap:24px;margin-top:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);}
+  .mv-stats b{color:var(--ink);}
+
+  /* Form */
+  form{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;max-width:560px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+  .field input,.field select,.field textarea{
+    width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;
+    font-size:14px;font-family:inherit;background:var(--bg);color:var(--ink);
+  }
+  .field textarea{min-height:70px;resize:vertical;}
+  .row2{display:flex;gap:14px;}
+  .row2 .field{flex:1;}
+  .submit-btn{background:var(--teal);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;cursor:pointer;}
+  .submit-btn:hover{background:#264b44;}
+  .submit-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .err{color:var(--red);font-size:12px;margin-top:5px;display:none;}
+  .saved-msg{color:var(--teal);font-size:13px;margin-top:12px;display:none;}
+  .sheet-links{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+  .sheet-links a{color:var(--teal);font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Hälsoöversikt</h1>
+      <p>Mätvärden, journalanteckningar, vaccinationer och skador — samlat från Google Drive</p>
+    </div>
+    <div class="auth-box">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Ej inloggad</span>
+      <button class="btn" id="signin-btn">Logga in med Google</button>
+      <button class="btn ghost" id="signout-btn" style="display:none;">Logga ut</button>
+      <button class="icon-btn" id="settings-toggle" title="Inställningar">⚙</button>
+    </div>
+  </header>
+
+  <div class="settings" id="settings-panel" style="display:none;">
+    <h3>Inställningar</h3>
+    <label for="client-id-input">Google OAuth Client ID</label>
+    <input type="text" id="client-id-input" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+    <div class="row">
+      <button class="btn" id="save-client-id">Spara</button>
+      <span class="saved-msg" id="client-id-saved" style="display:none;">Sparat.</span>
+    </div>
+    <details>
+      <summary>Hur skaffar jag ett Client ID? (behövs bara en gång)</summary>
+      <ol>
+        <li>Gå till <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → Credentials</a> och skapa ett nytt projekt (valfritt namn).</li>
+        <li>Under "APIs &amp; Services → Library", sök upp och aktivera <b>Google Drive API</b>.</li>
+        <li>Under "OAuth consent screen": välj "External", fyll i app-namn, din e-post som support/kontakt. Publiceringsstatus kan stå kvar på "Testing" — lägg till dig själv under "Test users".</li>
+        <li>Under "Credentials → Create Credentials → OAuth client ID": typ <b>Web application</b>.</li>
+        <li>Under "Authorized JavaScript origins", lägg till exakt den adress du öppnar den här filen från, t.ex. <code>http://localhost:8080</code> (se nedan varför).</li>
+        <li>Kopiera det genererade Client ID:t (slutar på <code>.apps.googleusercontent.com</code>) och klistra in ovan.</li>
+      </ol>
+      <p><b>Viktigt:</b> Google tillåter inte inloggning från en fil öppnad direkt i webbläsaren (<code>file://...</code>). Kör en enkel lokal server i mappen där filen ligger, t.ex:</p>
+      <p><code>python3 -m http.server 8080</code></p>
+      <p>och öppna sedan <code>http://localhost:8080/halsooversikt.html</code> i webbläsaren. Första gången du loggar in visar Google en varning om att appen inte är verifierad — det är förväntat eftersom det är din egen privata app; klicka "Avancerat" → "Fortsätt".</p>
+    </details>
+  </div>
+
+  <div id="global-banner"></div>
+
+  <nav>
+    <button data-tab="karta" class="active">Kroppskarta</button>
+    <button data-tab="tidslinje">Tidslinje</button>
+    <button data-tab="vaccinationer">Vaccinationer<span class="tab-dot" id="vacc-tab-dot"></span></button>
+    <button data-tab="matvarden">Mätvärden</button>
+    <button data-tab="lagg-till">Lägg till</button>
+  </nav>
+
+  <section class="panel active" id="panel-karta">
+    <div class="body-layout">
+      <div class="body-map">
+        <svg viewBox="0 0 200 340" xmlns="http://www.w3.org/2000/svg">
+          <ellipse class="region" data-part="huvud" cx="100" cy="24" rx="17" ry="19"></ellipse>
+          <ellipse class="region mouth" data-part="mun" cx="100" cy="34" rx="12" ry="6"></ellipse>
+          <rect class="region" data-part="bal" x="68" y="46" width="64" height="60" rx="14"></rect>
+          <ellipse class="region" data-part="hjarta" cx="110" cy="66" rx="10" ry="9"></ellipse>
+          <ellipse class="region" data-part="hoft" cx="100" cy="114" rx="36" ry="16"></ellipse>
+          <rect class="region" data-part="arm-hoger" x="38" y="52" width="20" height="74" rx="10"></rect>
+          <ellipse class="region" data-part="hand-hoger" cx="48" cy="134" rx="12" ry="13"></ellipse>
+          <rect class="region" data-part="arm-vanster" x="142" y="52" width="20" height="74" rx="10"></rect>
+          <ellipse class="region" data-part="hand-vanster" cx="152" cy="134" rx="12" ry="13"></ellipse>
+          <rect class="region" data-part="ben-hoger" x="74" y="128" width="24" height="94" rx="12"></rect>
+          <rect class="region" data-part="ben-vanster" x="102" y="128" width="24" height="94" rx="12"></rect>
+          <ellipse class="region" data-part="kna-hoger" cx="86" cy="176" rx="13" ry="9"></ellipse>
+          <ellipse class="region" data-part="kna-vanster" cx="114" cy="176" rx="13" ry="9"></ellipse>
+          <ellipse class="region" data-part="fot-hoger" cx="84" cy="234" rx="15" ry="9"></ellipse>
+          <ellipse class="region" data-part="fot-vanster" cx="116" cy="234" rx="15" ry="9"></ellipse>
+        </svg>
+        <div class="legend">
+          <span><i style="background:#EFEBDF;border:1px solid var(--line);"></i>Inga anteckningar</span>
+          <span><i style="background:var(--red-light);border:1px solid var(--red);"></i>Har journalposter</span>
+        </div>
+        <p class="hint" style="font-size:12px;margin-top:10px;">Munnen är förstorad och klickbar — tandvård och andra mun/svalg-relaterade poster hittar du där. Vaccinationer visas aldrig här, se egen flik.</p>
+      </div>
+      <div class="body-detail">
+        <h2 id="detail-title">Välj en kroppsdel</h2>
+        <p class="hint" id="detail-hint">Klicka på kroppskartan för att se allt som är kopplat dit.</p>
+        <div id="detail-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-tidslinje">
+    <div class="filters" id="filters"></div>
+    <div id="timeline-list"></div>
+  </section>
+
+  <section class="panel" id="panel-vaccinationer">
+    <div id="vacc-container"></div>
+    <details style="margin-top:24px;max-width:680px;">
+      <summary style="cursor:pointer;color:var(--teal);font-size:13px;">Påminnelseinställningar (intervall per vaccinationstyp)</summary>
+      <p class="hint" style="margin:10px 0;">Ändra intervallet i år, eller kryssa i "Ingen påminnelse" om du inte vill bli flaggad för en viss typ (t.ex. om du bestämt dig för att inte ta fler covid-doser). Sparas till Drive och gäller tills du ändrar igen.</p>
+      <div id="vacc-reminder-settings"></div>
+    </details>
+  </section>
+
+  <section class="panel" id="panel-matvarden">
+    <div class="mv-chips" id="mv-chips"></div>
+    <div class="chart-card">
+      <canvas id="mv-chart" height="110"></canvas>
+      <div class="mv-stats" id="mv-stats"></div>
+    </div>
+    <div class="chart-card" style="margin-top:18px;">
+      <h3 style="font-size:15px;margin-bottom:10px;">Datatäckning</h3>
+      <p class="hint" style="margin-bottom:10px;">Per mätserie: första och senaste datum, antal registreringar och senaste källa — bra att kolla innan du lägger tid på att bearbeta en gammal export.</p>
+      <div id="mv-coverage"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-lagg-till">
+    <form id="entry-form">
+      <div class="row2">
+        <div class="field">
+          <label for="f-date">Datum</label>
+          <input type="date" id="f-date" required>
+        </div>
+        <div class="field">
+          <label for="f-cat">Kategori</label>
+          <select id="f-cat">
+            <option value="allmant">Allmänt / journal</option>
+            <option value="mun">Mun/tandvård</option>
+            <option value="hjarta">Hjärta/kärlsystem</option>
+            <option value="ben:hoger">Höger ben</option>
+            <option value="ben:vanster">Vänster ben</option>
+            <option value="kna:hoger">Höger knä</option>
+            <option value="kna:vanster">Vänster knä</option>
+            <option value="fot:hoger">Höger fot</option>
+            <option value="fot:vanster">Vänster fot</option>
+            <option value="arm:hoger">Höger arm</option>
+            <option value="arm:vanster">Vänster arm</option>
+            <option value="hand:hoger">Höger hand</option>
+            <option value="hand:vanster">Vänster hand</option>
+            <option value="hoft">Höft/ljumske</option>
+            <option value="vaccination_relaterat">Vaccinationsrelaterat</option>
+            <option value="administrativt">Administrativt</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-title">Kort sammanfattning</label>
+        <input type="text" id="f-title" placeholder="T.ex. Överbelastning i hälsenan efter resa" required>
+      </div>
+      <div class="field">
+        <label for="f-full">Fullständig anteckning (valfritt)</label>
+        <textarea id="f-full" placeholder="Klistra in hela texten från journalen här"></textarea>
+      </div>
+      <div class="field">
+        <label for="f-link">Länk till PDF/journal (valfritt)</label>
+        <input type="url" id="f-link" placeholder="https://drive.google.com/...">
+      </div>
+      <div class="err" id="form-err">Fyll i datum och en kort sammanfattning.</div>
+      <button type="submit" class="submit-btn" id="submit-entry-btn" disabled>Spara post till Drive</button>
+      <div class="saved-msg" id="saved-msg"></div>
+    </form>
+
+    <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--line);">
+      <h3 style="font-size:15px;margin-bottom:6px;">Vaccination</h3>
+      <p class="hint" style="margin-bottom:6px;">Lägg till en ny vaccination — den sparas i vaccinationer.json i Drive och dyker upp under fliken "Vaccinationer" och på Tidslinjen.</p>
+      <form id="vacc-form">
+        <div class="row2">
+          <div class="field">
+            <label for="vf-date">Datum</label>
+            <input type="date" id="vf-date" required>
+          </div>
+          <div class="field">
+            <label for="vf-dos">Dos (valfritt)</label>
+            <input type="number" id="vf-dos" min="1" step="1" placeholder="T.ex. 1, 2">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="vf-namn">Vaccin (produktnamn)</label>
+            <input type="text" id="vf-namn" placeholder="T.ex. Boostrix" required>
+          </div>
+          <div class="field">
+            <label for="vf-sjukdom">Skyddar mot (valfritt)</label>
+            <input type="text" id="vf-sjukdom" placeholder="T.ex. Difteri/Stelkramp/Kikhosta">
+          </div>
+        </div>
+        <div class="field">
+          <label for="vf-kommentar">Kommentar (valfritt)</label>
+          <input type="text" id="vf-kommentar" placeholder="Valfri anteckning, t.ex. booster, given samma dag som X">
+        </div>
+        <div class="field">
+          <label for="vf-intervall">Påminnelseintervall i år (valfritt)</label>
+          <input type="number" id="vf-intervall" min="0" step="0.5" placeholder="T.ex. 10 — lämna tomt om ingen påminnelse behövs">
+        </div>
+        <div class="err" id="vacc-form-err">Fyll i datum och vaccinnamn.</div>
+        <button type="submit" class="submit-btn" id="submit-vacc-btn" disabled>Spara vaccination till Drive</button>
+        <div class="saved-msg" id="vacc-saved-msg"></div>
+      </form>
+    </div>
+
+    <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--line);max-width:560px;">
+      <h3 style="font-size:15px;margin-bottom:6px;">Mätvärden (blodtryck, vikt, sömn, träning m.m.)</h3>
+      <p class="hint" style="margin-bottom:6px;">De här hålls i egna Google Sheets och visas som linjediagram — lägg till nya mätningar direkt i rätt Sheet, så dyker de upp under fliken "Mätvärden" nästa gång du laddar om.</p>
+      <div class="sheet-links" id="sheet-links"></div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+'use strict';
+
+/* ---------- Konstanter ---------- */
+const ROOT_FOLDER_ID = '1mKvnP0aiiBhxfr7f7GPlAx1lIfA1XY-l'; // "Hälsoöversikt"-mappen i Drive
+const SCOPES = 'https://www.googleapis.com/auth/drive';
+const KROPPSDEL_LABEL = {
+  mun: 'Mun/tandvård', fot: 'Fot', hoft: 'Höft/ljumske', allmant: 'Allmänt',
+  administrativt: 'Administrativt', vaccination_relaterat: 'Vaccinationsrelaterat',
+  matvarden: 'Mätvärden (besök)', egen: 'Egen anteckning', vaccin: 'Vaccination',
+  'fot-hoger': 'Höger fot', 'fot-vanster': 'Vänster fot',
+  hjarta: 'Hjärta/kärlsystem',
+  arm: 'Arm', hand: 'Hand', ben: 'Ben', kna: 'Knä',
+  'arm-hoger': 'Höger arm', 'arm-vanster': 'Vänster arm',
+  'hand-hoger': 'Höger hand', 'hand-vanster': 'Vänster hand',
+  'ben-hoger': 'Höger ben', 'ben-vanster': 'Vänster ben',
+  'kna-hoger': 'Höger knä', 'kna-vanster': 'Vänster knä'
+};
+// vilka kroppsdelar (+ ev. sida) som lyser upp på kartan för varje klickbar region
+const MAP_PARTS = {
+  mun: {kroppsdel:['mun']},
+  hoft: {kroppsdel:['hoft']},
+  hjarta: {kroppsdel:['hjarta']},
+  'fot-hoger': {kroppsdel:['fot'], sida:'hoger'},
+  'fot-vanster': {kroppsdel:['fot'], sida:'vanster'},
+  'arm-hoger': {kroppsdel:['arm'], sida:'hoger'},
+  'arm-vanster': {kroppsdel:['arm'], sida:'vanster'},
+  'hand-hoger': {kroppsdel:['hand'], sida:'hoger'},
+  'hand-vanster': {kroppsdel:['hand'], sida:'vanster'},
+  'ben-hoger': {kroppsdel:['ben'], sida:'hoger'},
+  'ben-vanster': {kroppsdel:['ben'], sida:'vanster'},
+  'kna-hoger': {kroppsdel:['kna'], sida:'hoger'},
+  'kna-vanster': {kroppsdel:['kna'], sida:'vanster'}
+};
+function matchesRegion(entry, regionKey){
+  const cfg = MAP_PARTS[regionKey];
+  if(!cfg || !entry) return false;
+  if(!cfg.kroppsdel.includes(entry.kroppsdel)) return false;
+  if(cfg.sida && entry.sida !== cfg.sida) return false;
+  return true;
+}
+// normaliserar kolumnnamn (tar bort accenter, gemener) så att t.ex. "Sömntid" och "Somntid" matchar samma kolumn
+function normKey(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
+function getCol(row, name){
+  if(row[name] !== undefined) return row[name];
+  const target = normKey(name);
+  const key = Object.keys(row).find(k=> normKey(k) === target);
+  return key !== undefined ? row[key] : undefined;
+}
+function parseDateMs(d){
+  const t = new Date(d).getTime();
+  return isNaN(t) ? null : t;
+}
+
+/* ---------- State ---------- */
+let accessToken = null;
+let tokenClient = null;
+let journalEntries = [];   // sammanslaget: journal_register.json + Egna anteckningar-mappen
+let vaccinationer = [];
+let mvData = {};           // { Blodtryck: [{datum,...}], Vikt: [...], ... }
+let selectedPart = null;
+let activeFilter = 'Alla';
+let mvActiveCat = null;
+let mvChart = null;
+let mvSheetMeta = {};      // { Blodtryck: {id, url}, ... }
+let egnaFolderId = null;
+let vaccReminderOverrides = {}; // { 'Covid-19': {years:1, disabled:false}, ... } - sparas i vaccinationspaminnelser.json
+let vaccOverridesFileId = null;
+let vaccinationerFileId = null;   // Drive-fil-id för vaccinationer.json, så nya vaccinationer kan sparas dit
+let vaccinationerMeta = {};       // övriga fält i vaccinationer.json (beskrivning m.m.) utöver själva listan
+
+/* ---------- Hjälpfunktioner ---------- */
+function banner(html, isErr){
+  const el = document.getElementById('global-banner');
+  el.innerHTML = html ? `<div class="banner${isErr?' err':''}">${html}</div>` : '';
+}
+function fmtDate(d){
+  const dt = new Date(d);
+  if(isNaN(dt)) return d;
+  return dt.toLocaleDateString('sv-SE', {year:'numeric',month:'short',day:'numeric'});
+}
+function setStatus(text, cls){
+  document.getElementById('status-text').textContent = text;
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot' + (cls ? ' '+cls : '');
+}
+
+/* ---------- Inställningar (Client ID) ---------- */
+function getClientId(){ return localStorage.getItem('halsoo_client_id') || ''; }
+document.getElementById('settings-toggle').addEventListener('click', ()=>{
+  const p = document.getElementById('settings-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('client-id-input').value = getClientId();
+});
+document.getElementById('save-client-id').addEventListener('click', ()=>{
+  const v = document.getElementById('client-id-input').value.trim();
+  localStorage.setItem('halsoo_client_id', v);
+  document.getElementById('client-id-saved').style.display = 'inline';
+  setTimeout(()=>{ document.getElementById('client-id-saved').style.display='none'; }, 2000);
+  initGoogle();
+});
+
+/* ---------- Google Sign-In ---------- */
+function initGoogle(){
+  const cid = getClientId();
+  document.getElementById('signin-btn').disabled = !cid;
+  if(!cid || typeof google === 'undefined' || !google.accounts) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: SCOPES,
+    callback: (resp)=>{
+      if(resp.error){
+        banner('Inloggningen misslyckades: ' + resp.error, true);
+        return;
+      }
+      accessToken = resp.access_token;
+      onSignedIn();
+    }
+  });
+}
+document.getElementById('signin-btn').addEventListener('click', ()=>{
+  if(!getClientId()){
+    document.getElementById('settings-panel').style.display = 'block';
+    banner('Ange ditt Google OAuth Client ID i inställningarna först (se "Hur skaffar jag ett Client ID?").', true);
+    return;
+  }
+  if(!tokenClient){ initGoogle(); }
+  if(tokenClient) tokenClient.requestAccessToken();
+});
+document.getElementById('signout-btn').addEventListener('click', ()=>{
+  if(accessToken && google.accounts && google.accounts.oauth2){
+    google.accounts.oauth2.revoke(accessToken, ()=>{});
+  }
+  accessToken = null;
+  setStatus('Ej inloggad');
+  document.getElementById('signin-btn').style.display = 'inline-block';
+  document.getElementById('signout-btn').style.display = 'none';
+  banner('');
+});
+
+async function onSignedIn(){
+  setStatus('Inloggad', 'ok');
+  document.getElementById('signin-btn').style.display = 'none';
+  document.getElementById('signout-btn').style.display = 'inline-block';
+  document.getElementById('submit-entry-btn').disabled = false;
+  document.getElementById('submit-vacc-btn').disabled = false;
+  banner('Läser in data från Drive …');
+  try{
+    await loadAllData();
+    banner('');
+    renderAll();
+  }catch(e){
+    console.error(e);
+    banner('Kunde inte läsa data från Drive: ' + e.message + '. Kontrollera att Client ID:t har åtkomst till Drive API och att du godkände behörigheten.', true);
+  }
+}
+
+/* ---------- Drive-hjälpare ---------- */
+async function driveFetch(url, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers, {Authorization: 'Bearer ' + accessToken});
+  const res = await fetch(url, opts);
+  if(!res.ok){
+    const txt = await res.text().catch(()=> '');
+    throw new Error('Drive-API ' + res.status + ': ' + txt.slice(0,200));
+  }
+  return res;
+}
+async function listChildren(folderId){
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200`;
+  const res = await driveFetch(url);
+  const json = await res.json();
+  return json.files || [];
+}
+async function getJsonFile(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return res.json();
+}
+async function getSheetAsCsv(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`);
+  return res.text();
+}
+function parseCsv(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c === '\r'){ /* skip */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(!rows.length) return [];
+  const header = rows[0];
+  return rows.slice(1).filter(r=>r.length===header.length && r.some(v=>v!=='')).map(r=>{
+    const obj = {};
+    header.forEach((h,i)=> obj[h] = r[i]);
+    return obj;
+  });
+}
+async function createDriveFile(name, parentId, mimeType, content){
+  const metadata = {name, parents:[parentId], mimeType};
+  const boundary = '-------halsoo-' + Math.random().toString(36).slice(2);
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n${content}\r\n` +
+    `--${boundary}--`;
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST',
+    headers:{'Content-Type': `multipart/related; boundary=${boundary}`},
+    body
+  });
+  return res.json();
+}
+async function updateDriveFileContent(fileId, mimeType, content){
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method:'PATCH',
+    headers:{'Content-Type': mimeType},
+    body: content
+  });
+  return res.json();
+}
+
+/* ---------- Datainläsning ---------- */
+async function loadAllData(){
+  const rootChildren = await listChildren(ROOT_FOLDER_ID);
+  const byName = {};
+  rootChildren.forEach(f=> byName[f.name] = f);
+
+  // journal_register.json + vaccinationer.json
+  const [journalReg, vaccReg] = await Promise.all([
+    byName['journal_register.json'] ? getJsonFile(byName['journal_register.json'].id) : {poster:[]},
+    byName['vaccinationer.json'] ? getJsonFile(byName['vaccinationer.json'].id) : {vaccinationer:[]}
+  ]);
+  vaccinationer = vaccReg.vaccinationer || [];
+  // fil-id + övriga fält (beskrivning m.m.) sparas separat så en ny vaccination kan
+  // läggas till från appen och hela filen skrivas tillbaka utan att tappa något.
+  vaccinationerFileId = byName['vaccinationer.json'] ? byName['vaccinationer.json'].id : null;
+  vaccinationerMeta = Object.assign({}, vaccReg);
+  delete vaccinationerMeta.vaccinationer;
+
+  // Personliga överstyrningar av vaccinationspåminnelser (intervall/avstängd per typ),
+  // sparade separat i Drive så de överlever ett omladdat sidan.
+  if(byName['vaccinationspaminnelser.json']){
+    vaccOverridesFileId = byName['vaccinationspaminnelser.json'].id;
+    try{ vaccReminderOverrides = await getJsonFile(vaccOverridesFileId) || {}; }
+    catch(e){ console.warn('Kunde inte läsa vaccinationspaminnelser.json', e); vaccReminderOverrides = {}; }
+  } else {
+    vaccOverridesFileId = null;
+    vaccReminderOverrides = {};
+  }
+
+  const baseJournal = (journalReg.poster || []).map(p=>({
+    id: 'reg-' + p.datum + '-' + p.titel,
+    datum: p.datum, titel: p.titel, kategori: p.kategori, kroppsdel: p.kroppsdel,
+    sida: p.sida || '',
+    kalla: p.kalla, kommentar: '', kalla_typ: 'register'
+  }));
+
+  // Egna anteckningar-mappen
+  let egna = [];
+  if(byName['Egna anteckningar']){
+    egnaFolderId = byName['Egna anteckningar'].id;
+    const files = await listChildren(egnaFolderId);
+    const jsonFiles = files.filter(f=> f.mimeType === 'application/json' || f.name.endsWith('.json'));
+    const contents = await Promise.all(jsonFiles.map(f=> getJsonFile(f.id).catch(()=>null)));
+    egna = contents.filter(Boolean).map((c,i)=>({
+      id: 'egen-' + jsonFiles[i].id,
+      datum: c.datum, titel: c.titel, kategori: c.kategori || 'Egen anteckning',
+      kroppsdel: c.kroppsdel || 'allmant', sida: c.sida || '',
+      kalla: c.kalla || '', kommentar: c.kommentar || '',
+      kalla_typ: 'egen'
+    }));
+  }
+
+  // Vaccinationer visas ALDRIG på kroppskartan (kroppsdel 'vaccin' finns avsiktligt
+  // inte i MAP_PARTS), men syns nu även på Tidslinjen, inte bara under sin egen flik.
+  const vaccinTimeline = vaccinationer.map(v=>{
+    const filer = v.filer || {};
+    const kalla = filer.lang || filer.kort || filer.dokument || Object.values(filer)[0] || '';
+    return {
+      id: 'vaccin-' + v.datum + '-' + v.vaccin,
+      datum: v.datum,
+      titel: v.vaccin,
+      kategori: 'Vaccination' + (v.dos ? ' · dos ' + v.dos : ''),
+      kroppsdel: 'vaccin',
+      sida: '',
+      kalla,
+      kommentar: v.kommentar || '',
+      kalla_typ: 'vaccination'
+    };
+  });
+
+  journalEntries = baseJournal.concat(egna).concat(vaccinTimeline);
+
+  // Mätvärden-mappen
+  // OBS: en mätserie kan vara uppdelad på flera filer om datamängden är för stor
+  // för att skapas i ett enda anrop (t.ex. "Sömn", "Sömn (del 2)", "Sömn (del 3)").
+  // Namnet med suffixet "(del N)" strippas här så att alla delar slås ihop till
+  // samma mätserie. Ordningen spelar ingen roll eftersom renderMvChart() ändå
+  // sorterar alla punkter efter datum vid ritning.
+  mvData = {}; mvSheetMeta = {};
+  if(byName['Mätvärden']){
+    const sheets = await listChildren(byName['Mätvärden'].id);
+    for(const s of sheets){
+      const baseName = s.name.replace(/\s*\(del\s*\d+\)\s*$/i, '');
+      if(!mvSheetMeta[baseName]) mvSheetMeta[baseName] = {id: s.id, url: `https://docs.google.com/spreadsheets/d/${s.id}/edit`};
+      try{
+        const csv = await getSheetAsCsv(s.id);
+        const rows = parseCsv(csv);
+        mvData[baseName] = (mvData[baseName] || []).concat(rows);
+      }catch(e){ console.warn('Kunde inte läsa', s.name, e); }
+    }
+  }
+}
+
+/* ---------- Kroppskarta ---------- */
+function renderBodyMap(){
+  document.querySelectorAll('.region').forEach(r=>{
+    const part = r.dataset.part;
+    const has = MAP_PARTS[part] ? journalEntries.some(e=> matchesRegion(e, part)) : false;
+    r.classList.toggle('has-data', !!has);
+    r.classList.toggle('selected', part === selectedPart);
+  });
+}
+function renderDetail(){
+  const title = document.getElementById('detail-title');
+  const hint = document.getElementById('detail-hint');
+  const list = document.getElementById('detail-list');
+  list.innerHTML = '';
+  if(!selectedPart){
+    title.textContent = 'Välj en kroppsdel';
+    hint.textContent = 'Klicka på kroppskartan för att se allt som är kopplat dit.';
+    return;
+  }
+  title.textContent = KROPPSDEL_LABEL[selectedPart] || selectedPart;
+  const related = journalEntries.filter(e=> matchesRegion(e, selectedPart))
+    .sort((a,b)=> new Date(b.datum)-new Date(a.datum));
+  hint.textContent = related.length
+    ? related.length + (related.length===1 ? ' post' : ' poster')
+    : 'Inga poster kopplade till den här kroppsdelen än.';
+  related.forEach(e=> list.appendChild(entryCard(e)));
+}
+
+function entryCard(e){
+  const div = document.createElement('div');
+  div.className = 'entry';
+  const badgeCls = 'badge-' + (e.kroppsdel || 'allmant');
+  div.innerHTML = `
+    <div class="entry-top">
+      <div class="entry-meta">
+        <span class="date">${fmtDate(e.datum)}</span>
+        <span class="badge ${badgeCls}">${e.kategori || KROPPSDEL_LABEL[e.kroppsdel] || ''}</span>
+        <span class="entry-title">${e.titel}</span>
+      </div>
+      <span class="chev">▾</span>
+    </div>
+    <div class="entry-body">
+      ${e.kommentar ? `<div class="full">${e.kommentar.replace(/</g,'&lt;')}</div>` : ''}
+      ${e.kalla ? `<div style="margin-top:8px;"><a href="${e.kalla}" target="_blank" rel="noopener">Öppna original ↗</a></div>` : ''}
+    </div>
+  `;
+  div.querySelector('.entry-top').addEventListener('click', ()=>{
+    div.querySelector('.entry-body').classList.toggle('open');
+  });
+  return div;
+}
+
+document.querySelectorAll('.region').forEach(r=>{
+  r.addEventListener('click', ()=>{
+    selectedPart = (selectedPart === r.dataset.part) ? null : r.dataset.part;
+    renderBodyMap();
+    renderDetail();
+  });
+});
+
+/* ---------- Tidslinje ---------- */
+function renderTimeline(){
+  const cats = ['Alla','mun','hjarta','fot','ben','kna','arm','hand','hoft','allmant','vaccination_relaterat','vaccin','administrativt','egen'];
+  const filters = document.getElementById('filters');
+  filters.innerHTML = '';
+  cats.forEach(c=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (activeFilter===c ? ' active' : '');
+    chip.textContent = c === 'Alla' ? 'Alla' : (KROPPSDEL_LABEL[c] || c);
+    chip.addEventListener('click', ()=>{ activeFilter = c; renderTimeline(); });
+    filters.appendChild(chip);
+  });
+  const list = document.getElementById('timeline-list');
+  list.innerHTML = '';
+  const filtered = journalEntries
+    .filter(e => activeFilter==='Alla' || e.kroppsdel===activeFilter)
+    .sort((a,b)=> new Date(b.datum)-new Date(a.datum));
+  if(filtered.length===0){
+    list.innerHTML = '<div class="empty">Inga poster i den här kategorin. Logga in för att läsa in data från Drive, eller lägg till en post under "Lägg till".</div>';
+    return;
+  }
+  filtered.forEach(e=> list.appendChild(entryCard(e)));
+}
+
+/* ---------- Vaccinationer ---------- */
+// Ungefärliga rekommenderade omvaccinationsintervall (år) för vanliga återkommande vaccinationstyper.
+// Det här är en grov tumregel för att flagga i appen när något börjar bli aktuellt igen —
+// inte medicinsk rådgivning. Justera gärna mönster/intervall om något inte stämmer för dig.
+const VACC_REMINDER_RULES = [
+  {pattern: /stelkramp|tetanus/i, years: 10, label: 'Stelkramp (tetanus)'},
+  {pattern: /difteri/i, years: 10, label: 'Difteri'},
+  {pattern: /polio/i, years: 10, label: 'Polio'},
+  {pattern: /k(i|ä)kh(o|ö)sta|pertussis/i, years: 10, label: 'Kikhosta'},
+  {pattern: /(fästingburen|\btbe\b)/i, years: 3, label: 'TBE (fästingburen hjärninflammation)'},
+  {pattern: /influensa/i, years: 1, label: 'Säsongsinfluensa'},
+  {pattern: /covid/i, years: 1, label: 'Covid-19'}
+];
+// hittar den senaste dosen av varje matchad återkommande vaccinationstyp och räknar ut
+// när nästa dos beräknas bli aktuell, med hänsyn till ev. personliga överstyrningar
+// (annat intervall, eller helt avstängd påminnelse) sparade i vaccReminderOverrides.
+// OBS: en och samma spruta kan skydda mot flera sjukdomar med olika intervall (t.ex.
+// diTeBooster mot både Difteri och Stelkramp) — därför matchas ALLA regler som träffar
+// vaccinnamnet, inte bara den första. Returnerar en Map där nyckeln är den specifika
+// vaccinations-posten (v) och värdet en LISTA av statusar (en per matchad sjukdom/regel),
+// sorterad mest brådskande först.
+function computeVaccDueMap(){
+  const now = Date.now();
+  const yearMs = 365.25*24*60*60*1000;
+  const warnWindowMs = yearMs;
+  const hasCustomInterval = (v)=> typeof v.paminnelse_ar === 'number' && !isNaN(v.paminnelse_ar);
+  const dueMap = new Map();
+  // en dos markerad "Ingen påminnelse" (satt i Påminnelseinställningar, under "Egna
+  // vaccinationspåminnelser") ska ALDRIG larma — varken via eget intervall eller genom
+  // att råka matcha en av VACC_REMINDER_RULES-reglerna. Den hanteras här, separat och
+  // FÖRST, och utesluts sedan ur båda de andra spåren nedan.
+  vaccinationer.forEach(v=>{
+    if(!v.paminnelse_avstangd) return;
+    dueMap.set(v, [{label: splitVaccinName(v.vaccin).name || v.vaccin, disabled: true}]);
+  });
+  const latestByRule = new Map();
+  vaccinationer.forEach(v=>{
+    if(v.paminnelse_avstangd) return;
+    // rader med ett eget angivet intervall (satt när vaccinationen lades till i appen)
+    // hanteras separat nedan, oberoende av VACC_REMINDER_RULES-mönstren.
+    if(hasCustomInterval(v)) return;
+    const matchedRules = VACC_REMINDER_RULES.filter(r=> r.pattern.test(v.vaccin||''));
+    if(!matchedRules.length) return;
+    const t = parseDateMs(v.datum);
+    if(t==null) return;
+    matchedRules.forEach(rule=>{
+      const cur = latestByRule.get(rule);
+      if(!cur || t > cur.t) latestByRule.set(rule, {t, v});
+    });
+  });
+  latestByRule.forEach(({t,v}, rule)=>{
+    const ov = vaccReminderOverrides[rule.label] || {};
+    let info;
+    if(ov.disabled){
+      info = {label: rule.label, disabled: true};
+    } else {
+      const years = (typeof ov.years === 'number' && !isNaN(ov.years)) ? ov.years : rule.years;
+      const dueT = t + years*yearMs;
+      info = {
+        label: rule.label,
+        dueDate: new Date(dueT),
+        overdue: dueT <= now,
+        soon: dueT > now && (dueT - now) <= warnWindowMs,
+        years
+      };
+    }
+    if(!dueMap.has(v)) dueMap.set(v, []);
+    dueMap.get(v).push(info);
+  });
+  // rader med eget intervall: en fristående påminnelse per rad, beräknad direkt från
+  // den radens eget datum + intervall (ingen ihopslagning med andra doser av samma typ).
+  vaccinationer.forEach(v=>{
+    if(v.paminnelse_avstangd || !hasCustomInterval(v)) return;
+    const t = parseDateMs(v.datum);
+    if(t==null) return;
+    const dueT = t + v.paminnelse_ar*yearMs;
+    const info = {
+      label: splitVaccinName(v.vaccin).name || v.vaccin,
+      dueDate: new Date(dueT),
+      overdue: dueT <= now,
+      soon: dueT > now && (dueT - now) <= warnWindowMs,
+      years: v.paminnelse_ar,
+      custom: true
+    };
+    if(!dueMap.has(v)) dueMap.set(v, []);
+    dueMap.get(v).push(info);
+  });
+  const rank = (o)=> o.disabled ? 3 : (o.overdue ? 0 : (o.soon ? 1 : 2));
+  dueMap.forEach(infos=> infos.sort((a,b)=> (rank(a)-rank(b)) || ((a.dueDate&&b.dueDate) ? a.dueDate-b.dueDate : 0)));
+  return dueMap;
+}
+// skriver hela vaccinationer.json (metadata + hela listan) tillbaka till Drive — filen är
+// liten nog att alltid skriva om i sin helhet, samma mönster som vaccinationspaminnelser.json.
+async function saveVaccinationer(){
+  const payload = Object.assign({}, vaccinationerMeta, {
+    uppdaterad: new Date().toISOString().slice(0,10),
+    vaccinationer
+  });
+  const content = JSON.stringify(payload, null, 2);
+  if(vaccinationerFileId){
+    await updateDriveFileContent(vaccinationerFileId, 'application/json', content);
+  } else {
+    const created = await createDriveFile('vaccinationer.json', ROOT_FOLDER_ID, 'application/json', content);
+    vaccinationerFileId = created.id;
+  }
+}
+async function saveVaccOverrides(){
+  const content = JSON.stringify(vaccReminderOverrides, null, 2);
+  if(vaccOverridesFileId){
+    await updateDriveFileContent(vaccOverridesFileId, 'application/json', content);
+  } else {
+    const created = await createDriveFile('vaccinationspaminnelser.json', ROOT_FOLDER_ID, 'application/json', content);
+    vaccOverridesFileId = created.id;
+  }
+}
+// bryter ut "(Sjukdom)"-delen ur vaccinnamnet så den alltid kan visas på egen rad i tabellen,
+// istället för att bara råka radbrytas när namnet är långt nog. (Hissad hit så den kan
+// användas av både renderVaccReminderSettings() och renderVaccinationer().)
+function splitVaccinName(vaccin){
+  const m = /^(.*?)\s*(\([^)]*\))\s*$/.exec(vaccin || '');
+  if(m) return {name: m[1], disease: m[2]};
+  return {name: vaccin || '', disease: ''};
+}
+function renderVaccReminderSettings(){
+  const el = document.getElementById('vacc-reminder-settings');
+  if(!el) return;
+  const rulesHtml = VACC_REMINDER_RULES.map(rule=>{
+    const ov = vaccReminderOverrides[rule.label] || {};
+    const years = (typeof ov.years === 'number' && !isNaN(ov.years)) ? ov.years : rule.years;
+    const disabled = !!ov.disabled;
+    return `<div class="vacc-ov-row">
+      <span style="min-width:230px;">${rule.label}</span>
+      <label>Intervall (år): <input type="number" min="0" step="0.5" value="${years}" data-rule="${rule.label}" class="vacc-ov-years"></label>
+      <label><input type="checkbox" data-rule="${rule.label}" class="vacc-ov-disabled" ${disabled?'checked':''}> Ingen påminnelse</label>
+    </div>`;
+  }).join('');
+
+  // Egna, per-dos påminnelser (satta via "Lägg till vaccination" eller tidigare här) —
+  // listas separat så de går att justera eller stänga av i efterhand, precis som de
+  // fasta reglerna ovan. Index i vaccinationer-arrayen används som nyckel för att kunna
+  // skriva tillbaka rätt post.
+  const customEntries = vaccinationer
+    .map((v, idx)=> ({v, idx}))
+    .filter(({v})=> typeof v.paminnelse_ar === 'number' || v.paminnelse_avstangd)
+    .sort((a,b)=> new Date(b.v.datum) - new Date(a.v.datum));
+  const customHtml = customEntries.length ? `
+    <h4 style="font-size:13px;margin:18px 0 8px;color:var(--muted);font-weight:600;">Egna vaccinationspåminnelser</h4>
+    <p class="hint" style="margin-bottom:8px;">Bevakningar satta vid tillägg av en enskild vaccination (t.ex. via "Lägg till"-fliken). Kryssa i "Ingen påminnelse" för att stänga av en som börjat larma.</p>
+    ${customEntries.map(({v, idx})=>{
+      const name = splitVaccinName(v.vaccin).name || v.vaccin;
+      const disabled = !!v.paminnelse_avstangd;
+      const years = typeof v.paminnelse_ar === 'number' ? v.paminnelse_ar : '';
+      return `<div class="vacc-ov-row">
+        <span style="min-width:230px;">${name} <span class="vacc-note">(${fmtDate(v.datum)})</span></span>
+        <label>Intervall (år): <input type="number" min="0" step="0.5" value="${years}" data-idx="${idx}" class="vacc-custom-years" ${disabled?'disabled':''}></label>
+        <label><input type="checkbox" data-idx="${idx}" class="vacc-custom-disabled" ${disabled?'checked':''}> Ingen påminnelse</label>
+      </div>`;
+    }).join('')}` : '';
+
+  el.innerHTML = rulesHtml + customHtml + `<div style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+      <button class="btn" id="vacc-ov-save" type="button">Spara påminnelseinställningar</button>
+      <span id="vacc-ov-saved" style="display:none;color:var(--teal);font-size:13px;"></span>
+    </div>`;
+
+  // klicka i "Ingen påminnelse" inaktiverar intervall-fältet visuellt för samma rad
+  el.querySelectorAll('.vacc-custom-disabled').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const yearsInput = el.querySelector(`.vacc-custom-years[data-idx="${cb.dataset.idx}"]`);
+      if(yearsInput) yearsInput.disabled = cb.checked;
+    });
+  });
+
+  document.getElementById('vacc-ov-save').addEventListener('click', async ()=>{
+    const next = {};
+    el.querySelectorAll('.vacc-ov-years').forEach(inp=>{
+      const label = inp.dataset.rule;
+      const val = parseFloat(inp.value);
+      next[label] = next[label] || {};
+      if(!isNaN(val)) next[label].years = val;
+    });
+    el.querySelectorAll('.vacc-ov-disabled').forEach(inp=>{
+      const label = inp.dataset.rule;
+      next[label] = next[label] || {};
+      next[label].disabled = inp.checked;
+    });
+    // rensa bort inställningar som ändå bara motsvarar standardvärdet, så filen hålls liten
+    Object.keys(next).forEach(label=>{
+      const rule = VACC_REMINDER_RULES.find(r=> r.label===label);
+      if(rule && next[label].years === rule.years && !next[label].disabled) delete next[label];
+    });
+
+    // egna per-dos-inställningar: skriv direkt in i vaccinationer-arrayen (samma objekt
+    // som resten av appen använder), och avgör om vaccinationer.json behöver sparas om.
+    let vaccinationerChanged = false;
+    el.querySelectorAll('.vacc-custom-disabled').forEach(cb=>{
+      const v = vaccinationer[parseInt(cb.dataset.idx, 10)];
+      if(!v) return;
+      const wasDisabled = !!v.paminnelse_avstangd;
+      if(cb.checked && !wasDisabled){ v.paminnelse_avstangd = true; vaccinationerChanged = true; }
+      else if(!cb.checked && wasDisabled){ delete v.paminnelse_avstangd; vaccinationerChanged = true; }
+    });
+    el.querySelectorAll('.vacc-custom-years').forEach(inp=>{
+      const v = vaccinationer[parseInt(inp.dataset.idx, 10)];
+      if(!v || v.paminnelse_avstangd) return; // avstängd - intervallvärdet spelar ingen roll just nu
+      if(inp.value === ''){
+        if(typeof v.paminnelse_ar === 'number'){ delete v.paminnelse_ar; vaccinationerChanged = true; }
+      } else {
+        const val = parseFloat(inp.value);
+        if(!isNaN(val) && v.paminnelse_ar !== val){ v.paminnelse_ar = val; vaccinationerChanged = true; }
+      }
+    });
+
+    const btn = document.getElementById('vacc-ov-save');
+    const msg = document.getElementById('vacc-ov-saved');
+    if(!accessToken){
+      msg.textContent = 'Du måste vara inloggad för att spara.';
+      msg.style.color = 'var(--red)';
+      msg.style.display = 'inline';
+      return;
+    }
+    btn.disabled = true;
+    msg.style.display = 'none';
+    try{
+      vaccReminderOverrides = next;
+      const tasks = [saveVaccOverrides()];
+      if(vaccinationerChanged) tasks.push(saveVaccinationer());
+      await Promise.all(tasks);
+      msg.textContent = 'Sparat.';
+      msg.style.color = 'var(--teal)';
+      msg.style.display = 'inline';
+      setTimeout(()=>{ msg.style.display = 'none'; }, 2500);
+      renderAll();
+    }catch(e){
+      msg.textContent = 'Kunde inte spara: ' + e.message;
+      msg.style.color = 'var(--red)';
+      msg.style.display = 'inline';
+    }finally{
+      btn.disabled = false;
+    }
+  });
+}
+function renderVaccinationer(){
+  const el = document.getElementById('vacc-container');
+  const dot = document.getElementById('vacc-tab-dot');
+  if(!vaccinationer.length){
+    el.innerHTML = '<div class="empty">Inga vaccinationer inlästa än. Logga in för att hämta vaccinationer.json från Drive.</div>';
+    if(dot){ dot.classList.remove('show','overdue'); }
+    return;
+  }
+  const dueMap = computeVaccDueMap();
+  const reminders = [];
+  dueMap.forEach((infos, v)=>{
+    infos.forEach(info=>{
+      if(!info.disabled && (info.overdue || info.soon)) reminders.push(Object.assign({lastDate: v.datum}, info));
+    });
+  });
+  reminders.sort((a,b)=> (b.overdue - a.overdue) || (a.dueDate - b.dueDate));
+  if(dot){
+    dot.classList.toggle('show', reminders.length>0);
+    dot.classList.toggle('overdue', reminders.some(r=>r.overdue));
+  }
+  const reminderHtml = reminders.length ? `
+    <div style="margin-bottom:18px;">
+      ${reminders.map(r=> `<div class="banner${r.overdue?' err':''}" style="margin-bottom:8px;">
+        ${r.overdue ? '⚠️ Försenad: ' : '⏳ Snart dags: '}<b>${r.label}</b> — senaste dos ${fmtDate(r.lastDate)}, nästa rekommenderas kring <b>${fmtDate(r.dueDate)}</b>.
+      </div>`).join('')}
+      <p class="hint" style="margin-top:2px;">Ungefärliga intervall, ingen medicinsk rådgivning — ändra eller stäng av under "Påminnelseinställningar" nedan.</p>
+    </div>` : '';
+  const sorted = vaccinationer.slice().sort((a,b)=> new Date(b.datum)-new Date(a.datum));
+  let rows = sorted.map(v=>{
+    const links = Object.entries(v.filer||{}).map(([k,url])=> `<a href="${url}" target="_blank" rel="noopener">${k}</a>`).join(' ');
+    const infos = dueMap.get(v);
+    let dueCell = '<span class="vacc-note">—</span>';
+    if(infos && infos.length){
+      // en dos kan skydda mot flera sjukdomar med olika intervall (t.ex. diTeBooster) —
+      // visa varje matchad sjukdoms status på egen rad, mest brådskande överst.
+      dueCell = infos.map(info=>{
+        if(info.disabled) return `<span class="vacc-note">${info.label}: avstängd</span>`;
+        if(info.overdue) return `<span class="due-overdue">${info.label}: försenad sedan ${fmtDate(info.dueDate)}</span>`;
+        if(info.soon) return `<span class="due-soon">${info.label}: snart ${fmtDate(info.dueDate)}</span>`;
+        return `<span class="due-ok">${info.label}: beräknad ${fmtDate(info.dueDate)}</span>`;
+      }).join('<br>');
+    }
+    const {name: vName, disease: vDisease} = splitVaccinName(v.vaccin);
+    return `<tr>
+      <td class="date">${fmtDate(v.datum)}</td>
+      <td>${vName}${vDisease ? `<span class="vacc-disease">${vDisease}</span>` : ''}</td>
+      <td>${v.dos ?? '—'}</td>
+      <td class="vacc-note">${v.kommentar || ''}</td>
+      <td class="vacc-links">${links}</td>
+      <td>${dueCell}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = reminderHtml + `<table class="vacc-table">
+    <thead><tr><th>Datum</th><th>Vaccin</th><th>Dos</th><th>Kommentar</th><th>Källa</th><th>Nästa dos</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/* ---------- Mätvärden ---------- */
+const MV_METRIC = {
+  'Blodtryck': {cols:['Systoliskt (mmHg)','Diastoliskt (mmHg)'], unit:'mmHg', agg:false},
+  'Vikt': {cols:['Vikt (kg)'], unit:'kg', agg:false},
+  'Kroppssammansättning': {cols:['Fettprocent (%)'], unit:'%', agg:false},
+  'Sömn': {cols:['Sömntid (min)'], unit:'min', agg:false, toHours:true},
+  'Träning': {cols:['Steg'], unit:'steg/dag', agg:true, smoothDays:7},
+  'Vilopuls': {cols:['Vilopuls (bpm)'], unit:'bpm', agg:false}
+};
+// glidande medelvärde (bakåtblickande fönster i dagar) — ger en mjuk trendlinje ovanpå rådata, à la Withings-appen
+function smoothSeries(points, windowDays){
+  const ms = windowDays*24*60*60*1000;
+  let lo = 0, sum = 0;
+  const out = new Array(points.length);
+  for(let i=0;i<points.length;i++){
+    sum += points[i].y;
+    while(points[i].x - points[lo].x > ms){ sum -= points[lo].y; lo++; }
+    out[i] = {x: points[i].x, y: sum/(i-lo+1)};
+  }
+  return out;
+}
+function renderMvChips(){
+  const chips = document.getElementById('mv-chips');
+  chips.innerHTML = '';
+  const cats = Object.keys(mvData);
+  if(!mvActiveCat && cats.length) mvActiveCat = cats[0];
+  cats.forEach(c=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (mvActiveCat===c ? ' active' : '');
+    chip.textContent = c;
+    chip.addEventListener('click', ()=>{ mvActiveCat = c; renderMvChart(); renderMvChips(); });
+    chips.appendChild(chip);
+  });
+}
+function renderMvChart(){
+  const canvas = document.getElementById('mv-chart');
+  const statsEl = document.getElementById('mv-stats');
+  if(!mvActiveCat || !mvData[mvActiveCat] || !mvData[mvActiveCat].length){
+    statsEl.innerHTML = '';
+    if(mvChart){ mvChart.destroy(); mvChart=null; }
+    return;
+  }
+  const rows = mvData[mvActiveCat].slice()
+    .map(r=> ({row:r, t: parseDateMs(getCol(r,'Datum'))}))
+    .filter(r=> r.t!=null)
+    .sort((a,b)=> a.t-b.t);
+  const conf = MV_METRIC[mvActiveCat] || {cols:[Object.keys(rows[0].row).find(k=>k!=='Datum'&&k!=='Kommentar'&&k!=='Källa')], unit:''};
+  let datasets = conf.cols.map(c=>({label:c, data:[], borderColor: c===conf.cols[0]?'#2F5D55':'#B7402F', backgroundColor:'transparent', tension:.2, pointRadius:2}));
+  const useSmoothing = conf.cols.length===1;
+
+  if(conf.agg){
+    // summera per dag (t.ex. steg) och placera varje dags-punkt på sin faktiska tidsaxel-position
+    const byDay = {};
+    const srcByDay = {};
+    rows.forEach(({row,t})=>{
+      const day = new Date(t); day.setHours(0,0,0,0);
+      const key = day.getTime();
+      const v = parseFloat(getCol(row, conf.cols[0]));
+      if(!isNaN(v)){
+        byDay[key] = (byDay[key]||0) + v;
+        const src = getCol(row, 'Källa');
+        if(src){ if(!srcByDay[key]) srcByDay[key] = new Set(); srcByDay[key].add(src); }
+      }
+    });
+    datasets[0].data = Object.keys(byDay).map(Number).sort((a,b)=>a-b)
+      .map(t=> ({x:t, y:byDay[t], src: srcByDay[t] ? Array.from(srcByDay[t]).join(', ') : ''}));
+  } else {
+    conf.cols.forEach((c,ci)=>{
+      datasets[ci].data = rows.map(({row,t})=>{
+        let v = parseFloat(getCol(row, c));
+        if(isNaN(v)) return null;
+        if(conf.toHours) v = v/60;
+        return {x:t, y:v, src: getCol(row, 'Källa') || ''};
+      }).filter(p=> p!=null);
+    });
+    if(conf.toHours) datasets.forEach(d=> d.label += ' (h)');
+  }
+
+  // à la Withings: tunn ljusgrå rådata i bakgrunden + en tjockare glidande trendlinje ovanpå
+  if(useSmoothing && datasets[0].data.length){
+    const rawData = datasets[0].data;
+    const rawLabel = datasets[0].label;
+    const accent = '#2F5D55';
+    const win = conf.smoothDays || 30;
+    const smoothed = smoothSeries(rawData, win);
+    datasets = [
+      {label: rawLabel + ' (rådata)', data: rawData, borderColor:'#D7D2C4', backgroundColor:'transparent', borderWidth:1, tension:.15, pointRadius:0, order:2},
+      {label: rawLabel + ` (${win}-dagars snitt)`, data: smoothed, borderColor: accent, backgroundColor:'transparent', borderWidth:2.5, tension:.3, pointRadius:1.5, pointBackgroundColor: accent, order:1}
+    ];
+  }
+
+  if(typeof Chart === 'undefined'){
+    statsEl.innerHTML = '<span class="hint">Diagrambiblioteket (Chart.js) kunde inte laddas — kontrollera internetuppkopplingen och ladda om sidan.</span>';
+    return;
+  }
+  if(mvChart) mvChart.destroy();
+  const tickDate = (val)=> new Date(val).toLocaleDateString('sv-SE', {year:'numeric', month:'short', day:'numeric'});
+  mvChart = new Chart(canvas.getContext('2d'), {
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true,
+      interaction:{mode:'nearest', intersect:false, axis:'x'},
+      scales:{
+        x:{ type:'linear', ticks:{autoSkip:true, maxTicksLimit:10, maxRotation:0, callback: tickDate} },
+        y:{beginAtZero:false}
+      },
+      plugins:{
+        legend:{display: datasets.length>1},
+        tooltip:{ callbacks:{
+          title: (items)=> items.length ? tickDate(items[0].parsed.x) : '',
+          afterLabel: (item)=>{
+            const src = item.raw && item.raw.src;
+            return src ? 'Källa: ' + src : undefined;
+          }
+        } }
+      }
+    }
+  });
+
+  const nums = datasets[0].data.map(p=> p.y).filter(v=> v!=null);
+  if(nums.length){
+    const latest = nums[nums.length-1];
+    const avg = nums.reduce((a,b)=>a+b,0)/nums.length;
+    statsEl.innerHTML = `<div><b>${rows.length}</b> registreringar</div><div>Senaste: <b>${latest.toFixed(1)}</b> ${conf.unit}</div><div>Snitt: <b>${avg.toFixed(1)}</b> ${conf.unit}</div>`;
+  } else statsEl.innerHTML = '';
+}
+
+/* ---------- Datatäckning (Mätvärden) ---------- */
+// per mätserie: första/senaste datum, antal registreringar och senaste källa — så att man på en
+// minut kan avgöra om en nyhittad export innehåller något nytt, utan att öppna varje Sheet.
+function renderMvCoverage(){
+  const el = document.getElementById('mv-coverage');
+  if(!el) return;
+  const names = Object.keys(mvData);
+  if(!names.length){
+    el.innerHTML = '<span class="hint">Logga in för att se en täckningsrapport per mätserie.</span>';
+    return;
+  }
+  const rows = names.map(name=>{
+    const pts = (mvData[name]||[])
+      .map(r=> ({t: parseDateMs(getCol(r,'Datum')), src: getCol(r,'Källa')}))
+      .filter(p=> p.t!=null)
+      .sort((a,b)=> a.t-b.t);
+    if(!pts.length){
+      return `<tr><td>${name}</td><td>—</td><td>—</td><td>0</td><td>—</td></tr>`;
+    }
+    const first = pts[0], last = pts[pts.length-1];
+    return `<tr>
+      <td>${name}</td>
+      <td class="date">${fmtDate(first.t)}</td>
+      <td class="date">${fmtDate(last.t)}</td>
+      <td>${pts.length}</td>
+      <td class="vacc-note">${last.src || '—'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table class="vacc-table">
+    <thead><tr><th>Mätserie</th><th>Första datum</th><th>Senaste datum</th><th>Antal registreringar</th><th>Senaste källa</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/* ---------- Lägg till ---------- */
+function renderSheetLinks(){
+  const el = document.getElementById('sheet-links');
+  el.innerHTML = '';
+  Object.entries(mvSheetMeta).forEach(([name, meta])=>{
+    const a = document.createElement('a');
+    a.href = meta.url; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = `Öppna ${name}-Sheet ↗`;
+    el.appendChild(a);
+  });
+  if(!Object.keys(mvSheetMeta).length){
+    el.innerHTML = '<span class="hint">Logga in för att se länkar till dina Mätvärden-Sheets.</span>';
+  }
+}
+
+document.getElementById('entry-form').addEventListener('submit', async (ev)=>{
+  ev.preventDefault();
+  const date = document.getElementById('f-date').value;
+  const title = document.getElementById('f-title').value.trim();
+  const err = document.getElementById('form-err');
+  const saved = document.getElementById('saved-msg');
+  saved.style.display = 'none';
+  if(!date || !title){ err.style.display = 'block'; return; }
+  err.style.display = 'none';
+
+  if(!accessToken || !egnaFolderId){
+    err.textContent = 'Du måste vara inloggad för att spara till Drive.';
+    err.style.display = 'block';
+    return;
+  }
+
+  const catValue = document.getElementById('f-cat').value;
+  const [kroppsdel, sida] = catValue.includes(':') ? catValue.split(':') : [catValue, ''];
+  const kategoriLabel = sida ? (KROPPSDEL_LABEL[kroppsdel + '-' + sida] || KROPPSDEL_LABEL[kroppsdel]) : KROPPSDEL_LABEL[kroppsdel];
+  const entry = {
+    datum: date,
+    titel: title,
+    kategori: kategoriLabel || 'Egen anteckning',
+    kroppsdel,
+    sida,
+    kommentar: document.getElementById('f-full').value.trim(),
+    kalla: document.getElementById('f-link').value.trim()
+  };
+  const safeTitle = title.replace(/[\\/:*?"<>|]/g,'').slice(0,60);
+  const filename = `${date} ${safeTitle}.json`;
+  const btn = document.getElementById('submit-entry-btn');
+  btn.disabled = true;
+  try{
+    await createDriveFile(filename, egnaFolderId, 'application/json', JSON.stringify(entry, null, 2));
+    saved.textContent = `Sparat som "${filename}" i Egna anteckningar.`;
+    saved.style.display = 'block';
+    document.getElementById('entry-form').reset();
+    await loadAllData();
+    renderAll();
+  }catch(e){
+    err.textContent = 'Kunde inte spara: ' + e.message;
+    err.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('vacc-form').addEventListener('submit', async (ev)=>{
+  ev.preventDefault();
+  const date = document.getElementById('vf-date').value;
+  const namn = document.getElementById('vf-namn').value.trim();
+  const err = document.getElementById('vacc-form-err');
+  const saved = document.getElementById('vacc-saved-msg');
+  saved.style.display = 'none';
+  if(!date || !namn){ err.style.display = 'block'; return; }
+  err.style.display = 'none';
+
+  if(!accessToken){
+    err.textContent = 'Du måste vara inloggad för att spara till Drive.';
+    err.style.display = 'block';
+    return;
+  }
+
+  const sjukdom = document.getElementById('vf-sjukdom').value.trim();
+  const dosRaw = document.getElementById('vf-dos').value;
+  const kommentar = document.getElementById('vf-kommentar').value.trim();
+  const intervallRaw = document.getElementById('vf-intervall').value;
+
+  const vaccinField = sjukdom ? `${namn} (${sjukdom})` : namn;
+  const entry = {
+    vaccin: vaccinField,
+    datum: date,
+    dos: dosRaw !== '' ? parseInt(dosRaw, 10) : null,
+    kommentar: kommentar || '',
+    filer: {}
+  };
+  if(intervallRaw !== ''){
+    const years = parseFloat(intervallRaw);
+    if(!isNaN(years)) entry.paminnelse_ar = years;
+  }
+
+  const btn = document.getElementById('submit-vacc-btn');
+  btn.disabled = true;
+  vaccinationer.push(entry);
+  try{
+    await saveVaccinationer();
+    saved.textContent = `Sparat: ${vaccinField} (${fmtDate(date)}).`;
+    saved.style.display = 'block';
+    document.getElementById('vacc-form').reset();
+    renderAll();
+  }catch(e){
+    vaccinationer.pop(); // sparningen misslyckades - rulla tillbaka det lokala tillståndet
+    err.textContent = 'Kunde inte spara: ' + e.message;
+    err.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Nav & init ---------- */
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+function renderAll(){
+  const steps = [renderBodyMap, renderDetail, renderTimeline, renderVaccinationer, renderVaccReminderSettings, renderMvChips, renderMvChart, renderMvCoverage, renderSheetLinks];
+  steps.forEach(fn=>{
+    try{ fn(); }catch(e){ console.error('Renderingsfel i', fn.name, e); }
+  });
+}
+
+window.addEventListener('load', ()=>{
+  setTimeout(initGoogle, 300); // vänta in att gsi-scriptet hunnit ladda
+  renderAll();
+});
+</script>
+</body>
+</html>
