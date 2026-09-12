@@ -1099,7 +1099,7 @@ const MV_METRIC = {
   'Vikt': {cols:['Vikt (kg)'], unit:'kg', agg:false},
   'Kroppssammansättning': {cols:['Fettprocent (%)'], unit:'%', agg:false},
   'Sömn': {cols:['Sömntid (min)'], unit:'min', agg:false, toHours:true},
-  'Träning': {cols:['Steg'], unit:'steg/dag', agg:true, smoothDays:7},
+  'Träning': {cols:['Steg'], unit:'steg/dag', agg:true, smoothDays:30}, // uppdaterad från 7 till 30 dagars snitt efter Mats önskemål
   'Vilopuls': {cols:['Vilopuls (bpm)'], unit:'bpm', agg:false}
 };
 // glidande medelvärde (bakåtblickande fönster i dagar) — ger en mjuk trendlinje ovanpå rådata, à la Withings-appen
@@ -1118,8 +1118,12 @@ function renderMvChips(){
   const chips = document.getElementById('mv-chips');
   chips.innerHTML = '';
   const cats = Object.keys(mvData);
-  if(!mvActiveCat && cats.length) mvActiveCat = cats[0];
-  cats.forEach(c=>{
+  // "Alla" är en syntetisk vy (inte en egen datakälla i mvData) som lägger ihop samtliga
+  // mätserier i en och samma graf, för att kunna jämföra trender — se renderMvChartAll().
+  // Visas bara om det faktiskt finns minst en mätserie att jämföra.
+  const allCats = cats.length ? cats.concat(['Alla']) : cats;
+  if(!mvActiveCat && allCats.length) mvActiveCat = allCats[0];
+  allCats.forEach(c=>{
     const chip = document.createElement('button');
     chip.className = 'chip' + (mvActiveCat===c ? ' active' : '');
     chip.textContent = c;
@@ -1130,6 +1134,7 @@ function renderMvChips(){
 function renderMvChart(){
   const canvas = document.getElementById('mv-chart');
   const statsEl = document.getElementById('mv-stats');
+  if(mvActiveCat === 'Alla'){ renderMvChartAll(canvas, statsEl); return; }
   if(!mvActiveCat || !mvData[mvActiveCat] || !mvData[mvActiveCat].length){
     statsEl.innerHTML = '';
     if(mvChart){ mvChart.destroy(); mvChart=null; }
@@ -1219,6 +1224,114 @@ function renderMvChart(){
     const avg = nums.reduce((a,b)=>a+b,0)/nums.length;
     statsEl.innerHTML = `<div><b>${rows.length}</b> registreringar</div><div>Senaste: <b>${latest.toFixed(1)}</b> ${conf.unit}</div><div>Snitt: <b>${avg.toFixed(1)}</b> ${conf.unit}</div>`;
   } else statsEl.innerHTML = '';
+}
+
+// Serier som "Alla"-vyn kan visa, i FAST ordning — ordningen (inte vilka som råkar ha
+// data just nu) avgör vilken palettfärg varje serie får, så en färg alltid pekar på
+// samma mätvärde även om en serie tillfälligt saknar data.
+const MV_ALL_SERIES = [
+  {cat:'Blodtryck', col:'Systoliskt (mmHg)', label:'Blodtryck: systoliskt', unit:'mmHg'},
+  {cat:'Blodtryck', col:'Diastoliskt (mmHg)', label:'Blodtryck: diastoliskt', unit:'mmHg'},
+  {cat:'Vikt', col:'Vikt (kg)', label:'Vikt', unit:'kg'},
+  {cat:'Kroppssammansättning', col:'Fettprocent (%)', label:'Fettprocent', unit:'%'},
+  {cat:'Sömn', col:'Sömntid (min)', label:'Sömn', unit:'h', toHours:true},
+  {cat:'Träning', col:'Steg', label:'Steg', unit:'steg/dag', agg:true},
+  {cat:'Vilopuls', col:'Vilopuls (bpm)', label:'Vilopuls', unit:'bpm'}
+];
+// Validerad kategorisk palett (se dataviz-riktlinjerna), tilldelad i fast ordning ovan.
+const MV_ALL_PALETTE = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7'];
+
+// "Alla"-vyn: samtliga mätserier som ETT 30-dagars glidande snitt vardera, i samma graf —
+// för att kunna jämföra trender över tid (t.ex. går vikten ner samtidigt som vilopulsen?).
+// Serierna har helt olika enheter/skalor (kg, bpm, steg, timmar, mmHg, %) och kan därför
+// INTE dela en vanlig linjär y-axel (två y-axlar undviks medvetet — se dataviz-riktlinjerna:
+// "one axis... indexed to a common base"). Istället normaliseras varje seriens EGNA
+// glidande-snitt till ett index 0–100 (min–max över dess synliga intervall) för att jämföra
+// FORMEN på trenderna. Det verkliga värdet + enhet finns kvar per punkt och visas i
+// tooltipen och i sammanfattningen under grafen — bara y-axelns skala är normaliserad,
+// aldrig datan som faktiskt visas för användaren.
+function renderMvChartAll(canvas, statsEl){
+  const datasets = [];
+  const summary = [];
+  MV_ALL_SERIES.forEach((s, i)=>{
+    const rowsRaw = mvData[s.cat];
+    if(!rowsRaw || !rowsRaw.length) return;
+    const rows = rowsRaw.slice()
+      .map(r=> ({row:r, t: parseDateMs(getCol(r,'Datum'))}))
+      .filter(r=> r.t!=null)
+      .sort((a,b)=> a.t-b.t);
+    let raw;
+    if(s.agg){
+      // samma dags-summering som i renderMvChart() (t.ex. steg per dag)
+      const byDay = {};
+      rows.forEach(({row,t})=>{
+        const day = new Date(t); day.setHours(0,0,0,0);
+        const key = day.getTime();
+        const v = parseFloat(getCol(row, s.col));
+        if(!isNaN(v)) byDay[key] = (byDay[key]||0) + v;
+      });
+      raw = Object.keys(byDay).map(Number).sort((a,b)=>a-b).map(t=> ({x:t, y:byDay[t]}));
+    } else {
+      raw = rows.map(({row,t})=>{
+        let v = parseFloat(getCol(row, s.col));
+        if(isNaN(v)) return null;
+        if(s.toHours) v = v/60;
+        return {x:t, y:v};
+      }).filter(p=> p!=null);
+    }
+    if(!raw.length) return;
+    const smoothed = smoothSeries(raw, 30);
+    const ys = smoothed.map(p=>p.y);
+    const min = Math.min(...ys), max = Math.max(...ys);
+    const range = (max - min) || 1; // helt platt serie (min===max): undvik division med 0 — visas då som en rak linje vid index 0
+    const indexed = smoothed.map(p=> ({x:p.x, y:(p.y-min)/range*100, real:p.y, unit:s.unit}));
+    datasets.push({
+      label: s.label,
+      data: indexed,
+      borderColor: MV_ALL_PALETTE[i],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      tension: .25,
+      pointRadius: 0
+    });
+    summary.push({label:s.label, real: ys[ys.length-1], unit:s.unit, color: MV_ALL_PALETTE[i]});
+  });
+
+  if(typeof Chart === 'undefined'){
+    statsEl.innerHTML = '<span class="hint">Diagrambiblioteket (Chart.js) kunde inte laddas — kontrollera internetuppkopplingen och ladda om sidan.</span>';
+    return;
+  }
+  if(mvChart) mvChart.destroy();
+  if(!datasets.length){
+    statsEl.innerHTML = '<span class="hint">Ingen mätdata att jämföra ännu.</span>';
+    return;
+  }
+  const tickDate = (val)=> new Date(val).toLocaleDateString('sv-SE', {year:'numeric', month:'short', day:'numeric'});
+  mvChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {datasets},
+    options: {
+      responsive: true,
+      interaction: {mode:'nearest', intersect:false, axis:'x'},
+      scales: {
+        x: {type:'linear', ticks:{autoSkip:true, maxTicksLimit:10, maxRotation:0, callback: tickDate}},
+        y: {min:0, max:100, title:{display:true, text:'Index 0–100 per mätvärde (30-dagars snitt)'}}
+      },
+      plugins: {
+        legend: {display:true},
+        tooltip: { callbacks: {
+          title: (items)=> items.length ? tickDate(items[0].parsed.x) : '',
+          label: (item)=>{
+            const p = item.raw;
+            return `${item.dataset.label}: ${p.real.toFixed(1)} ${p.unit}`;
+          }
+        } }
+      }
+    }
+  });
+
+  statsEl.innerHTML = '<p class="hint" style="margin-bottom:10px;">Alla mätvärden visas som 30-dagars glidande snitt, skalade var för sig till ett index 0–100 så att olika enheter (kg, bpm, steg, timmar, mmHg, %) går att jämföra i samma graf. Hovra över en linje för att se det verkliga värdet.</p>' +
+    summary.map(s=> `<div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color};margin-right:6px;"></span>${s.label}: <b>${s.real.toFixed(1)}</b> ${s.unit} <span class="hint">(senaste, 30-dagars snitt)</span></div>`).join('');
 }
 
 /* ---------- Datatäckning (Mätvärden) ---------- */
