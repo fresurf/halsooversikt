@@ -799,11 +799,12 @@ const VACC_REMINDER_RULES = [
 // vaccinnamnet, inte bara den första. Returnerar en Map där nyckeln är den specifika
 // vaccinations-posten (v) och värdet en LISTA av statusar (en per matchad sjukdom/regel),
 // sorterad mest brådskande först.
+// (Hissad till toppnivå, delas av computeVaccDueMap() och vaccRuleHasMatch() nedan.)
+function hasCustomInterval(v){ return typeof v.paminnelse_ar === 'number' && !isNaN(v.paminnelse_ar); }
 function computeVaccDueMap(){
   const now = Date.now();
   const yearMs = 365.25*24*60*60*1000;
   const warnWindowMs = yearMs;
-  const hasCustomInterval = (v)=> typeof v.paminnelse_ar === 'number' && !isNaN(v.paminnelse_ar);
   const dueMap = new Map();
   // en dos markerad "Ingen påminnelse" (satt i Påminnelseinställningar, under "Egna
   // vaccinationspåminnelser") ska ALDRIG larma — varken via eget intervall eller genom
@@ -811,7 +812,7 @@ function computeVaccDueMap(){
   // FÖRST, och utesluts sedan ur båda de andra spåren nedan.
   vaccinationer.forEach(v=>{
     if(!v.paminnelse_avstangd) return;
-    dueMap.set(v, [{label: splitVaccinName(v.vaccin).name || v.vaccin, disabled: true}]);
+    dueMap.set(v, [{label: vaccDiseaseLabel(v.vaccin), disabled: true}]);
   });
   const latestByRule = new Map();
   vaccinationer.forEach(v=>{
@@ -855,7 +856,7 @@ function computeVaccDueMap(){
     if(t==null) return;
     const dueT = t + v.paminnelse_ar*yearMs;
     const info = {
-      label: splitVaccinName(v.vaccin).name || v.vaccin,
+      label: vaccDiseaseLabel(v.vaccin),
       dueDate: new Date(dueT),
       overdue: dueT <= now,
       soon: dueT > now && (dueT - now) <= warnWindowMs,
@@ -901,10 +902,25 @@ function splitVaccinName(vaccin){
   if(m) return {name: m[1], disease: m[2]};
   return {name: vaccin || '', disease: ''};
 }
+// Etikett för egna (per-dos) påminnelser: visar vad vaccinet skyddar mot, precis som
+// de fasta reglernas etiketter (t.ex. "Stelkramp (tetanus)"), istället för produktnamnet
+// — så listan blir enhetlig oavsett om posten kom från en regel eller ett eget intervall.
+function vaccDiseaseLabel(vaccin){
+  const {name, disease} = splitVaccinName(vaccin);
+  const clean = disease.replace(/^\(|\)$/g, '').trim();
+  return clean || name || vaccin || '';
+}
+// Sant om minst en registrerad dos faktiskt kan trigga den här fasta regeln (samma villkor
+// som computeVaccDueMap() använder för att bygga latestByRule). Används för att inte visa
+// t.ex. "Kikhosta" eller "TBE" i Påminnelseinställningar när det inte finns någon sådan
+// vaccination alls — annars listas irrelevanta regler som ändå aldrig kan larma.
+function vaccRuleHasMatch(rule){
+  return vaccinationer.some(v=> !v.paminnelse_avstangd && !hasCustomInterval(v) && rule.pattern.test(v.vaccin||''));
+}
 function renderVaccReminderSettings(){
   const el = document.getElementById('vacc-reminder-settings');
   if(!el) return;
-  const rulesHtml = VACC_REMINDER_RULES.map(rule=>{
+  const rulesHtml = VACC_REMINDER_RULES.filter(vaccRuleHasMatch).map(rule=>{
     const ov = vaccReminderOverrides[rule.label] || {};
     const years = (typeof ov.years === 'number' && !isNaN(ov.years)) ? ov.years : rule.years;
     const disabled = !!ov.disabled;
@@ -927,11 +943,11 @@ function renderVaccReminderSettings(){
     <h4 style="font-size:13px;margin:18px 0 8px;color:var(--muted);font-weight:600;">Egna vaccinationspåminnelser</h4>
     <p class="hint" style="margin-bottom:8px;">Bevakningar satta vid tillägg av en enskild vaccination (t.ex. via "Lägg till"-fliken). Kryssa i "Ingen påminnelse" för att stänga av en som börjat larma.</p>
     ${customEntries.map(({v, idx})=>{
-      const name = splitVaccinName(v.vaccin).name || v.vaccin;
+      const label = vaccDiseaseLabel(v.vaccin);
       const disabled = !!v.paminnelse_avstangd;
       const years = typeof v.paminnelse_ar === 'number' ? v.paminnelse_ar : '';
       return `<div class="vacc-ov-row">
-        <span style="min-width:230px;">${name} <span class="vacc-note">(${fmtDate(v.datum)})</span></span>
+        <span style="min-width:230px;">${label} <span class="vacc-note">(${fmtDate(v.datum)})</span></span>
         <label>Intervall (år): <input type="number" min="0" step="0.5" value="${years}" data-idx="${idx}" class="vacc-custom-years" ${disabled?'disabled':''}></label>
         <label><input type="checkbox" data-idx="${idx}" class="vacc-custom-disabled" ${disabled?'checked':''}> Ingen påminnelse</label>
       </div>`;
