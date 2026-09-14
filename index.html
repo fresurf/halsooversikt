@@ -702,15 +702,26 @@ async function loadAllData(){
   mvData = {}; mvSheetMeta = {};
   if(byName['Mätvärden']){
     const sheets = await listChildren(byName['Mätvärden'].id);
-    for(const s of sheets){
+    sheets.forEach(s=>{
       const baseName = s.name.replace(/\s*\(del\s*\d+\)\s*$/i, '');
       if(!mvSheetMeta[baseName]) mvSheetMeta[baseName] = {id: s.id, url: `https://docs.google.com/spreadsheets/d/${s.id}/edit`};
+    });
+    // Hämtar alla delfiler PARALLELLT istället för en i taget (som tidigare, med await
+    // i en vanlig for-loop). Varje fil kräver ett eget nätverks-tur-och-retur till Drive
+    // (exportet av kalkylarket till CSV görs server-side hos Google, inte bara en
+    // filnedladdning), och det är ANTALET såna anrop — inte antalet rader i filerna —
+    // som dominerar laddningstiden. Att tolka CSV-texten lokalt i JS är i jämförelse
+    // i det närmaste gratis, även för tusentals rader.
+    const results = await Promise.all(sheets.map(async s=>{
+      const baseName = s.name.replace(/\s*\(del\s*\d+\)\s*$/i, '');
       try{
         const csv = await getSheetAsCsv(s.id);
-        const rows = parseCsv(csv);
-        mvData[baseName] = (mvData[baseName] || []).concat(rows);
-      }catch(e){ console.warn('Kunde inte läsa', s.name, e); }
-    }
+        return {baseName, rows: parseCsv(csv)};
+      }catch(e){ console.warn('Kunde inte läsa', s.name, e); return {baseName, rows: []}; }
+    }));
+    results.forEach(({baseName, rows})=>{
+      mvData[baseName] = (mvData[baseName] || []).concat(rows);
+    });
   }
 }
 
